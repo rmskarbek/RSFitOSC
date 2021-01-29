@@ -1,4 +1,8 @@
 function varargout = RSFitOSC(varargin)
+%%% TODO: 2. Remove weight?; 
+%%% 6. Plot button clear fitting axes; 7. Error messages, copy
+%%% from RSFit3000.
+
 % RSFitOSC MATLAB code for RSFitOSC.fig
 %      RSFitOSC, by itself, creates a new RSFitOSC or raises the existing
 %      singleton*.
@@ -22,7 +26,7 @@ function varargout = RSFitOSC(varargin)
 
 % Edit the above text to modify the response to help RSFitOSC
 
-% Last Modified by GUIDE v2.5 21-Oct-2019 09:58:48
+% Last Modified by GUIDE v2.5 16-Sep-2020 07:28:22
 
 % Begin initialization code - DO NOT EDIT
 gui_Singleton = 1;
@@ -61,14 +65,14 @@ guidata(hObject, handles);
 %%% Populate the listbox
 update_listbox(handles)
 
+%%% Set number of warm-up cycles.
+set(handles.WarmUpCycles, 'String', num2str(10));
+
+%%% Set detrending slope to zero.
+set(handles.SlopeValue, 'String', num2str(0));
+
 %%% Set the sample slip flag to "false", and disable the sample slip field.
 setappdata(handles.FitButton, 'SampleSlipFlag', false);
-
-%%% Set the velocity step button to "on", disable the SHS panel, and set the
-%%% event flag.
-%set(handles.EventButtonGroup,'selectedobject',handles.VelocityStepButton);
-%setappdata(handles.FitButton, 'EventFlag', true);
-%set(findall(handles.SHSPanel, '-property', 'Enable'), 'Enable', 'off');
 
 %%% Set the two state variable button to "off" and set the state variable
 %%% flag.
@@ -83,15 +87,15 @@ set(handles.SlipFit_dc2Value, 'Enable', 'off')
 
 %%% Set the StiffnessFlag and MuFlag to "true", WeightFlag to "off", and
 %%% the respective buttons to "off"
-set(handles.WeightButton, 'value', 0);
-setappdata(handles.FitButton, 'WeightFlag', false);
+%set(handles.WeightButton, 'value', 0);
+%setappdata(handles.FitButton, 'WeightFlag', false);
 set(handles.MuButton, 'value', 0);
 setappdata(handles.FitButton, 'MuFlag', true);
 set(handles.StiffnessButton, 'value', 0);
 setappdata(handles.FitButton, 'StiffnessFlag', true);
 
 %%% Disable the weighting panel
-set(findall(handles.WeightPanel, '-property', 'Enable'), 'Enable', 'off');
+%set(findall(handles.WeightPanel, '-property', 'Enable'), 'Enable', 'off');
 
 %%% Set both Aging and Slip Law fit buttons to on, and enable their fields.
 set(handles.AgingButton, 'value', 1);
@@ -290,19 +294,19 @@ function FitButton_Callback(hObject, eventdata, handles)
     set(handles.SlipRes, 'String',[ ]);    
     set(handles.SlipFlag, 'String', [ ]);
 %%% Clear any previously plotted fits.
-children = get(handles.FittingAxes, 'children');
-if numel(children) > 1
-    for i = 1:numel(children)
-        if strcmp('-', get(children(i), 'LineStyle'))
-            delete(children(i));
+    children = get(handles.FittingAxes, 'children');
+    if numel(children) > 1
+        for i = 1:numel(children)
+            if strcmp('-', get(children(i), 'LineStyle'))
+                delete(children(i));
+            end
         end
     end
-end
 
     
 %%% Get the stuff.
     [x_0, x_e, x_L, NormStress, Slip_ZeroRef, Time_ZeroRef, StateVarFlag,...
-        StiffnessFlag, MuFlag, Weight] = GetStuff(handles);
+        StiffnessFlag, MuFlag, Weight, WUC] = GetStuff(handles);
 %%% Check if using sample slip data.
     SampleSlipFlag = getappdata(handles.FitButton, 'SampleSlipFlag');
 %%% Check what fits to do.
@@ -317,33 +321,10 @@ end
 %%% Aging law fit.
 if AgingLawFlag == 1
     StateLawFlag = true;
-%    if EventFlag
-%        try
-%        setappdata(handles.FitButton,'StepTime',Period);
-%        [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagA,~,residualA,jacobian,resnorm]...
-%            = RASFittingLD1(x_0,x_e,x_L,NormStress,Mu_Data,LoadPointSlip,Exp_Time,...
-%            StateLawFlag,StateVarFlag,EventFlag,StiffnessFlag,MuFlag,Weight,...
-%            SampleSlipFlag,handles);
-%        catch ME
-%            disp(ME.message)
-%            msg = 'ODE solver failure';
-%            error(msg);
-%        end
-%    else
-        %try
-%        HoldTime = varargout{1};
-%        TimeOfHold = varargout{2};
-%        setappdata(handles.FitButton,'Hold_Time',TimeOfHold);
-        [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagA,~,residualA,jacobian,resnorm]...
-            = RASFittingLD1(x_0,x_e,x_L,NormStress,Friction_Detrend,Slip_ZeroRef,...
-            Time_ZeroRef,StateLawFlag,StateVarFlag,StiffnessFlag,MuFlag,...
-            Weight,SampleSlipFlag,handles);
-        %catch ME
-        %    disp(ME.message)
-        %    msg = 'ODE solver failure';
-        %    error(msg);
-        %end
-%    end
+    [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagA,~,residualA,jacobian,resnorm]...
+        = RASFittingLD1(x_0,x_e,x_L,NormStress,Friction_Detrend,Slip_ZeroRef,...
+        Time_ZeroRef,StateLawFlag,StateVarFlag,StiffnessFlag,MuFlag,...
+        Weight,WUC,SampleSlipFlag,handles);
     
 %%% Compute the R-squared value.   
     FrictionResidualA = sum((Mu_f - Friction_Detrend).^2);
@@ -486,11 +467,7 @@ if AgingLawFlag == 1
     set(handles.AgingFit_dcValue, 'String', d_c1String);
 %%% Plot the fit over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-%    if EventFlag
-%        PAgingFit = plot(handles.FittingAxes,Slip_f, Mu_f, 'r', 'LineWidth', 2);
-%    else
-        PAgingFit = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'r', 'LineWidth', 2);
-%    end
+    PAgingFit = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'r', 'LineWidth', 2);
     hold(handles.FittingAxes, 'off');   
 %%% Store the fitted parameters and data.
     setappdata(handles.FitButton,'X0',x_0);
@@ -514,27 +491,10 @@ end
 if SlipLawFlag == 1
 %%% Slip law fit.
     StateLawFlag = false;
-%    if EventFlag
-%        try
-%        setappdata(handles.FitButton,'StepTime',Period);
-%        [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagS,~,residualS,jacobian,resnorm]...
-%            = RASFittingLD1(x_0,x_e,v_i,v_amp,NormStress,Period,Friction_Detrend,...
-%            Slip_ZeroRef,Time_ZeroRef,StateLawFlag,StateVarFlag,EventFlag,...
-%            StiffnessFlag,MuFlag,Weight,SampleSlipFlag,handles);
-%        catch ME
-%            disp(ME.message)
-%            msg = 'ODE solver failure';
-%            error(msg);
-%        end
-%    else
-        %try
-%        HoldTime = varargout{1};
-%        TimeOfHold = varargout{2};
-%        setappdata(handles.FitButton,'Hold_Time',TimeOfHold);
-        [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagS,~,residualS,jacobian,resnorm]...
-            = RASFittingLD1(x_0,x_e,x_L,NormStress,Friction_Detrend,Slip_ZeroRef,...
-            Time_ZeroRef,StateLawFlag,StateVarFlag,StiffnessFlag,MuFlag,...
-            Weight,SampleSlipFlag,handles);
+    [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagS,~,residualS,jacobian,resnorm]...
+        = RASFittingLD1(x_0,x_e,x_L,NormStress,Friction_Detrend,Slip_ZeroRef,...
+        Time_ZeroRef,StateLawFlag,StateVarFlag,StiffnessFlag,MuFlag,...
+        Weight,WUC,SampleSlipFlag,handles);
         %catch ME
         %    disp(ME.message)
         %    msg = 'ODE solver failure';
@@ -684,11 +644,7 @@ if SlipLawFlag == 1
     set(handles.SlipFit_dcValue, 'String', d_c1String);
 %%% Plot the fit over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-%    if EventFlag
-%        PSlipFit = plot(handles.FittingAxes,Slip_f, Mu_f, 'c', 'LineWidth', 2);
-%    else
-        PSlipFit = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'c', 'LineWidth', 2);
-%    end
+    PSlipFit = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'c', 'LineWidth', 2);
     hold(handles.FittingAxes, 'off');
 %%% Store the fitted parameters and data.
     setappdata(handles.FitButton,'X0',x_0);
@@ -763,9 +719,9 @@ elseif AgingLawFlag == 0 && SlipLawFlag == 1
 end    
     
 function [x_0, x_e, x_L, NormStress, Slip_ZeroRef, Time_ZeroRef,...
-    StateVarFlag, StiffnessFlag, MuFlag, Weight] = GetStuff(handles)
+    StateVarFlag, StiffnessFlag, MuFlag, Weight, WUC] = GetStuff(handles)
 
-%%% function to get parameter guesses and run flags, set inputs
+%%% function to get parameter guesses and run flags, set inputs.
     
 %%% Get parameter guesses, time of step, and step velocity values.
 %%% RAS fitting parameters.    
@@ -817,79 +773,36 @@ function [x_0, x_e, x_L, NormStress, Slip_ZeroRef, Time_ZeroRef,...
     x_L(2,1) = str2double(get(handles.VelocityAmp, 'String'));
     x_L(3,1) = 2*pi/str2double(get(handles.SignalPeriod, 'String'));
     x_L(4,1) = str2double(get(handles.SignalPhase, 'String'));
-%    x_L = getappdata(handles.DetrendButton, 'SignalParams');
     Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
     Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
-%%% Get the normal stress at beginning of windowed data.
+%%% Get the number of warm-up cycles.
+    WUC = str2double(get(handles.WarmUpCycles, 'String'));
+%%% Get the mean normal stress during the windowed data.
     NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
     NormStress = mean(NormStressZoom);
     
-%%% Check if fitting a velocity step or a slide-hold-slide.
-%    EventFlag = getappdata(handles.FitButton, 'EventFlag');
-%    if EventFlag
-%%% Velocity step values.
-%        InitialVel_String = get(handles.InitialVelocityValue,'String');
-%        v_i = str2double(InitialVel_String);
-%        FinalVel_String = get(handles.FinalVelocityValue,'String');
-%        v_f = str2double(FinalVel_String);
-%%% Get time of velocity step by finding the location of the step in the
-%%% slip data and pulling out the corresponding time.
-%        slip_step = get(handles.StepSlipValue,'String');
-%        SlipStep = str2double(slip_step);
-%        Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
-%        Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
-%        [~, ss] = min(abs(Slip_ZeroRef - SlipStep));
-%        TimeOfStep = Time_ZeroRef(ss);
-%        Holds{1} = [];
-%%% Get the normal stress at the time of the step.
-%        NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
-%        NormStress = NormStressZoom(ss);
-%    else
-%        Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
-%        Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
-%%% Slide-hold-slide values. Load, reload velocities.
-%        LoadVel_String = get(handles.LoadVelocityValue,'String');
-%        v_i = str2double(LoadVel_String);
-%        ReloadVel_String = get(handles.ReloadVelocityValue,'String');
-%        v_f = str2double(ReloadVel_String);
-%%% Length of hold.
-%        HoldTime_String = get(handles.HoldTime,'String');
-%        HoldTime = str2double(HoldTime_String);
-%%% Time when the hold initiates.
-%        TimeOfHold = getappdata(handles.SetHoldButton,'Step_TimeValue');
-%        Holds{1} = HoldTime;
-%        Holds{2} = TimeOfHold;
-%%% Get the normal stress at the time of the hold.
-%        NormStress_String = get(handles.LocNormStress,'string');
-%        NormStress = str2double(NormStress_String);
-%%% Give empty set for TimeOfStep
-%        TimeOfStep = [];
-%    end
-    
 %%% Construct weight function.
-    WeightFlag = getappdata(handles.FitButton, 'WeightFlag');    
-    if WeightFlag    
-        [Weight, ~] = WeightCalc(handles);
-    else
-        N = numel(Slip_ZeroRef);
-        Weight = ones(1, N);
-        setappdata(handles.WeightLocButton, 'Weight_Function', Weight);
-        setappdata(handles.WeightLocButton, 'Weight_Info', nan(3,1));
-    end    
+%     WeightFlag = getappdata(handles.FitButton, 'WeightFlag');    
+%     if WeightFlag    
+%         [Weight, ~] = WeightCalc(handles);
+%     else
+         N = numel(Slip_ZeroRef);
+         Weight = ones(1, N);
+%         setappdata(handles.WeightLocButton, 'Weight_Function', Weight);
+%         setappdata(handles.WeightLocButton, 'Weight_Info', nan(3,1));
+%     end    
     
     
 function [x_0,x_f,State1_f,State2_f,Vel_f,Mu_f,Slip_f,SampleSlip_f,exitflag,ODE_Sol,...
     residual,jacobian,resnorm] = RASFittingLD1(x_0,x_e,x_L,NormStress,...
     Mu_Data,LoadPointSlip,Exp_Time,StateLawFlag,StateVarFlag,...
-    StiffnessFlag,MuFlag,Weight,SampleSlipFlag,handles)
+    StiffnessFlag,MuFlag,Weight,WUC,SampleSlipFlag,handles)
     
 %%% Description of option flags.
 %%%     StateLawFlag = true : use the aging law
 %%%     StateLawFlag = false : use the slip law
 %%%     StateVarFlag = true :  use two state variables
 %%%     StateVarFlag = false :  use ones state variable
-%%%     EventFlag = true : fitting a velocity step
-%%%     EventFlag = false : fitting a slide-hold-slide
 
 %%% Contents of parameter array 'x_0'
 %%%     x(1) = mu_0
@@ -899,12 +812,10 @@ function [x_0,x_f,State1_f,State2_f,Vel_f,Mu_f,Slip_f,SampleSlip_f,exitflag,ODE_
 %%%     x(5) = k;
 %%%     x(6) = b2;
 %%%     x(7) = d_c2;
-%%%     x(8) = alpha;  
 
 %%% Time steps used for performing fitting simulations and optimization.
-%    tSpan = linspace(0,Exp_Time(end),1e3)';
     Period = 2*pi/x_L(3);    
-    Time_Eval = 6*Period + Exp_Time;
+    Time_Eval = WUC*Period + Exp_Time;
     tSpan = [0 Time_Eval(end)];
 %%% Optimize using nonlinear least squares fitting.
 %%% Experimental data that we are fitting.
@@ -912,17 +823,10 @@ function [x_0,x_f,State1_f,State2_f,Vel_f,Mu_f,Slip_f,SampleSlip_f,exitflag,ODE_
 
 %%% Set up objective function where the actual least squares minimization
 %%% occurs, see below for description.
-%%% Check if a hold time is provided.
-%if numel(varargin) == 1
-%    HoldTime = varargin{1};
     myObjective = @(x) objFcn(x, x_e, Time_Eval, Data, tSpan, x_L, NormStress,...
         StateLawFlag, StateVarFlag, StiffnessFlag, MuFlag, Weight,...
         SampleSlipFlag);
-%else
-%    myObjective = @(x) objFcn(x, x_e, Exp_Time, Data, tSpan, v_i, v_amp, NormStress,...
-%        Period, StateLawFlag, StateVarFlag, EventFlag,...
-%        StiffnessFlag, MuFlag, Weight, SampleSlipFlag);
-%end
+
 %%% Options for lsqnonlin.
 options = optimoptions(@lsqnonlin,'Display','iter-detailed','Algorithm',...
     'levenberg-marquardt');
@@ -958,15 +862,8 @@ tau_i = mu_i*sigma_i;
 slip_i = LoadPointSlip(1);
 Vars_i = [state1_i; state2_i; v_i; mu_i; slip_i; sigma_i; tau_i];
 opt = odeset('RelTol',1e-9,'AbsTol',[1e-12 1e-12 1e-32 1e-12 1e-12 1e-12 1e-12]);
-%if EventFlag
-%    ODE_Sol = ode45(@(time,Vars)SpringBlock(time,Vars,x_f,x_e,v_i,v_amp,Period,...
-%        StateLawFlag,StateVarFlag,EventFlag,StiffnessFlag,MuFlag),...
-%        tSpan,Vars_i,opt);
-    
-%else
-    ODE_Sol = ode15s(@(time,Vars)SpringBlock(time,Vars,x_f,x_e,x_L,StateLawFlag,...
-        StateVarFlag,StiffnessFlag,MuFlag), tSpan,Vars_i,opt);
-%end
+ODE_Sol = ode15s(@(time,Vars)SpringBlock(time,Vars,x_f,x_e,x_L,StateLawFlag,...
+    StateVarFlag,StiffnessFlag,MuFlag), tSpan,Vars_i,opt);
 
 %%% Evaluate the ode solution for the experimental time steps.
 bestY = deval(ODE_Sol, Time_Eval);
@@ -978,21 +875,10 @@ SampleSlip_f = bestY(5,:)';
 
 %%% Compute the load point slip
 Slip_f = nan(numel(Exp_Time), 1);
-%[~, kk1] = min(abs(Exp_Time - TimeOfStep));
-%Slip_f(1:kk1) = v_i*Exp_Time(1:kk1);
-%if EventFlag
-%    Slip_f(kk1+1:end) = Slip_f(kk1) + v_f*cumsum(diff(Exp_Time(kk1:end)));
-%else
-%    [~, kk2] = min(abs(Exp_Time - (TimeOfStep + HoldTime)));
-%    Slip_f(kk1+1:kk2) = Slip_f(kk1);
-%    Slip_f(kk2+1:end) = Slip_f(kk2) + v_f*cumsum(diff(Exp_Time(kk2:end)));
-%end
 
 
 function dVarsdt = SpringBlock(time,Vars,x,x_e,x_L,StateLawFlag,...
     StateVarFlag,StiffnessFlag,MuFlag)
-%%% change: v_f = v_amp; TimeOfStep = Period
-
 %%% This function contains the governing equations for a spring slider with
 %%% stiffness k. They are cast as coupled ODEs in state variable, friction
 %%% coefficient, and slider velocity. There is a fourth ode for slip that
@@ -1022,30 +908,6 @@ function dVarsdt = SpringBlock(time,Vars,x,x_e,x_L,StateLawFlag,...
     vel = Vars(3,1);
     mu = Vars(4,1);
     sigma = Vars(6,1);
-
-%%% Check if a hold time is provided.
-%    if numel(varargin) == 1
-%        HoldTime = varargin{1};
-%    end
-
-%%% Determine which type of event to fit.    
-%    if EventFlag
-%%% Fit a velcity step.        
-%        if time < TimeOfStep 
-%            v_L = v_i;
-%        else
-%            v_L = v_f;
-%        end
-%    else
-%%% Fit a slide-hold-slide
-%        if time < TimeOfStep 
-%            v_L = v_i;
-%        elseif time >= TimeOfStep && time < TimeOfStep + HoldTime
-%            v_L = 0;
-%        else
-%            v_L = v_f;
-%        end
-%    end
 
 %%% Friction stress.
     v_signal = v_amp*cos(omega*time + gamma);
@@ -1138,16 +1000,8 @@ function FitError = objFcn(x, x_e, ExpTime, Data, time, x_L, NormStress,...
 %%% Run the spring-slider simulation.
     opt = odeset('RelTol',1e-9,'AbsTol',...
         [1e-12 1e-12 1e-32 1e-12 1e-12 1e-12 1e-12]);
-%%% Check if a hold time is provided.
-%    if numel(varargin) == 1
-%        HoldTime = varargin{1};
     ODE_Sol = ode15s(@(time,Vars)SpringBlock(time,Vars,x,x_e,x_L,StateLawFlag,...
         StateVarFlag,StiffnessFlag,MuFlag), time,Vars_i,opt);
-%    else
-%        ODE_Sol = ode45(@(time,Vars)SpringBlock(time,Vars,x,x_e,v_i,v_amp,...
-%            Period,StateLawFlag,StateVarFlag,EventFlag,...
-%            StiffnessFlag,MuFlag), time,Vars_i,opt);
-%    end
     if ODE_Sol.x(end) < time(end)
         if b2 == 0
             ME = MException('ODE:fail',...
@@ -1166,7 +1020,7 @@ function FitError = objFcn(x, x_e, ExpTime, Data, time, x_L, NormStress,...
 
 %%% Fit based on minimizing friction coefficient.
     FitError = simY(4,:) - Data(1,:);
-    FitError = Weight.*FitError;
+%    FitError = Weight.*FitError;
 
     
 % --- Executes on button press in CreateStructureButton.
@@ -1176,11 +1030,10 @@ function CreateStructureButton_Callback(hObject, eventdata, handles)
 % handles    structure with handles and user data (see GUIDATA)
 
 %%% Check Flags.
-%    EventFlag = getappdata(handles.FitButton, 'EventFlag');
     StiffnessFlag = getappdata(handles.FitButton, 'StiffnessFlag');
     MuFlag = getappdata(handles.FitButton, 'MuFlag');
     StateVarFlag = getappdata(handles.FitButton, 'StateVarFlag');
-    WeightFlag = getappdata(handles.FitButton, 'WeightFlag');
+%    WeightFlag = getappdata(handles.FitButton, 'WeightFlag');
 %%% Check what fits were done.
     AgingLawFlag = getappdata(handles.FitButton, 'AgingLawFlag');
     SlipLawFlag = getappdata(handles.FitButton, 'SlipLawFlag');        
@@ -1223,20 +1076,20 @@ function CreateStructureButton_Callback(hObject, eventdata, handles)
     x_L = getappdata(handles.DetrendButton, 'SignalParams');
 %%% Get the load point slip fit.
     Slip_LFit = getappdata(handles.DetrendButton, 'SignalSlipFit');
-%%% Get the normal stress at the time of the step.
+%%% Get the average normal stress during the event.
     NormStress = getappdata(handles.FitButton, 'NormStressStep');
 %%% Get the weight information.
-    Weight = getappdata(handles.WeightLocButton, 'Weight_Function')';
-    WeightParameters = getappdata(handles.WeightLocButton, 'Weight_Info');
-    if WeightFlag    
-        slip_weight = get(handles.WeightSlipValue, 'String');    
-        WeightSlip = str2double(slip_weight);
-        friction_weight = get(handles.WeightFrictionValue, 'String');
-        WeightFriction = str2double(friction_weight);
-    else
-        WeightSlip = [];
-        WeightFriction = [];
-    end
+%     Weight = getappdata(handles.WeightLocButton, 'Weight_Function')';
+%     WeightParameters = getappdata(handles.WeightLocButton, 'Weight_Info');
+%     if WeightFlag    
+%         slip_weight = get(handles.WeightSlipValue, 'String');    
+%         WeightSlip = str2double(slip_weight);
+%         friction_weight = get(handles.WeightFrictionValue, 'String');
+%         WeightFriction = str2double(friction_weight);
+%     else
+%         WeightSlip = [];
+%         WeightFriction = [];
+%     end
 %%% Get the exit flags and residuals
     ExitFlags = getappdata(handles.FitButton, 'ExitFlag');
     FrictionVariability = sum((Friction_Detrend - mean(Friction_Detrend)).^2);
@@ -1286,7 +1139,7 @@ function CreateStructureButton_Callback(hObject, eventdata, handles)
         'NormalStressData', NormalStressZoom, 'DetrendParameters', [],...
         'FittingOptions', [], 'SignalParameters', [], 'TrialParameters', [],...
         'AgingLawParameters', [], 'SlipLawParameters', [], 'AgingLawFit',...
-        AgingFitData, 'SlipLawFit', SlipFitData, 'WeightInfo', []);
+        AgingFitData, 'SlipLawFit', SlipFitData);%, 'WeightInfo', []);
 
     StepData.SignalParameters = struct('MeanVelocity',x_L(1),...
         'SignalAmplitude', x_L(2), 'SignalPeriod', 2*pi/x_L(3),...
@@ -1311,20 +1164,23 @@ function CreateStructureButton_Callback(hObject, eventdata, handles)
     else
         OptionK = 'true';
     end
-    if WeightFlag
-        OptionW = 'true';
-    else
-        OptionW = 'false';
-    end
+%     if WeightFlag
+%         OptionW = 'true';
+%     else
+%         OptionW = 'false';
+%     end
+%%% Get the number of warm-up cycles.
+    WUC = str2double(get(handles.WarmUpCycles, 'String'));
     StepData.FittingOptions = struct('UseTwoStateVariables', OptionS,...
         'ConstrainMu_0', OptionMu, 'ConstrainStiffness', OptionK,...
-        'UseWeightFunction', OptionW);
+        'WarmUpCycles', WUC);
+%        'UseWeightFunction', OptionW);
        
-    StepData.WeightInfo = struct('Weights', Weight, 'N', WeightParameters(1),...
-        'i_w', WeightParameters(2), 'p', WeightParameters(3), 'WeightLocation',...
-        [WeightSlip, WeightFriction]);
-%%% Get parameter guesses, time of step, and step velocity values.
-%%% RAS fitting parameters.    
+%     StepData.WeightInfo = struct('Weights', Weight, 'N', WeightParameters(1),...
+%         'i_w', WeightParameters(2), 'p', WeightParameters(3), 'WeightLocation',...
+%         [WeightSlip, WeightFriction]);
+
+%%% Get parameter guesses, fitted values, and errors.
     mu_iString = get(handles.Guess_muValue,'String');
     mu_i = str2double(mu_iString);
     aString = get(handles.Guess_aValue,'String');
@@ -1718,10 +1574,10 @@ function DetrendButton_Callback(hObject, eventdata, handles)
     setappdata(handles.SlopeValue, 'NormStressZoomData', NormStressZoom);
     set(handles.LocNormStress, 'String', num2str(mean(NormStressZoom)));
 %%% Determine the load point velocity signal parameters.
-%    x_L(1) = v_m
-%    x_L(2) = v_a
-%    x_L(3) = omega; T = 2*pi/omega
-%    x_L(4) = gamma
+%%% x_L(1) = v_m
+%%% x_L(2) = v_a
+%%% x_L(3) = omega; T = 2*pi/omega
+%%% x_L(4) = gamma
     [x_L, Slip_LFit] = SignalFit(Time_ZeroRef, Slip_ZeroRef);
     setappdata(handles.DetrendButton, 'SignalParams', x_L);
     setappdata(handles.DetrendButton, 'SignalSlipFit', Slip_LFit);
@@ -1742,38 +1598,18 @@ function DetrendButton_Callback(hObject, eventdata, handles)
 
     
 function [x_L, Slip_LFit] = SignalFit(Time_0, Slip_0)
-%%% This is a crude estimate that could probably be replaced by more 
-%%% rigorous signal analysis. However, since ultimately the signal
-%%% parameters are determined by the non-linear fitting routine, it is not
-%%% essential.
-%%% Compute the load point velocity. Smooth the load point velocity using a
-%%% moving average with a window size based off of the sampling frequency
-%%% and total time of the data.
-%    W = 100;
-%    Vel_L = gradient(movmean(Slip_0,W))./gradient(Time_0);
-%    Vel_Lcut = Vel_L(0.6*W:end-0.6*W);
-%%% Estimate the signal parameters.
-%    v_a = (max(Vel_Lcut) - min(Vel_Lcut))/2;
-%    v_m = min(Vel_Lcut) + v_a;
-%%% Estimate the period.
-%    W = 4000;
-%    W = round(numel(Time_0)/10);
-%    Vel_L = gradient(movmean(Slip_0,W))./gradient(Time_0);
-%    Vel_Lcut = Vel_L(0.6*W:end-0.6*W);
-%    Time_0cut = Time_0(0.6*W:end-0.6*W);
-%    [pks, locs, ~, p] = findpeaks(Vel_Lcut, Time_0cut, 'MinPeakDistance',...
-%        Time_0(end)/(4*2));
-%    ip = pks > v_a;
-%    Period = mean(diff(locs(ip)));
-    
+   
+%%% Routine to fit the load point signal parameters from the displacement
+%%% data. First estimate the parameters.
     dt = mean(diff(Time_0));
     Slip_S = detrend(Slip_0);
     Corr_Slip = xcorr(Slip_S,Slip_S);
-    [ts, locs] = findpeaks(movmean(Corr_Slip, 100));
+    [ts, locs] = findpeaks(movmean(Corr_Slip, 1/dt), 'MinPeakDistance',...
+        1/dt);
 %    [ts, locs] = findpeaks(movmean(Corr_Slip, 100), 'MinPeakDistance',...
 %        mean(diff(locs(ts > 0))));
-    Period = mean(diff(locs(2:end-1)))*dt;
-%    Period = mean(diff(locs(ts > 0)))*dt;
+%    Period = mean(diff(locs(2:end-1)))*dt; % ERROR IF locs has less than 4 elements.
+    Period = mean(diff(locs(ts > 0)))*dt;
     [pks_s, locs_s] = findpeaks(Slip_S, Time_0, 'MinPeakDistance', 0.9*Period);
     slip_a = mean(pks_s);
     p = polyfit(Time_0,Slip_0,1);
@@ -1781,11 +1617,11 @@ function [x_L, Slip_LFit] = SignalFit(Time_0, Slip_0)
     v_a = 2*pi*slip_a/Period;
     
     x0 = [v_m; v_a; 2*pi/Period; 2*pi*(Period/4 - locs_s(1))/Period];
-%%%% Fit the load point slip data.
-%    x(1) = v_m
-%    x(2) = v_a
-%    x(3) = omega; T = 2*pi/omega
-%    x(4) = gamma
+%%% Fit the load point slip data.
+%%% x(1) = v_m
+%%% x(2) = v_a
+%%% x(3) = omega; T = 2*pi/omega
+%%% x(4) = gamma
     F = @(x, time_data) x(1)*time_data + (x(2)/x(3))*sin(x(3)*time_data + x(4)) - (x(2)/x(3))*sin(x(4));
     [x_L, ~, ~, ~, ~] = lsqcurvefit(F, x0, Time_0, Slip_0);
     x_L(4) = mod(x_L(4), 2*pi);
@@ -2089,45 +1925,45 @@ function FitTrendButton_Callback(hObject, eventdata, handles)
 
 
 % --- Executes on button press in SetVelocityStepButton.
-function SetVelocityStepButton_Callback(hObject, eventdata, handles)
-% hObject    handle to SetVelocityStepButton (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-%%% Set the data point to be recorded when the left mouse button is
-%%% clicked.
-    datacursormode on
-    waitforbuttonpress
-    cursorMode = datacursormode(gcf);
-    dcm_Info = getCursorInfo(cursorMode);
-    Position = dcm_Info.Position;
-    datacursormode off
-    set(handles.StepSlipValue, 'String', num2str(Position(1)));
-    set(handles.StepFrictionValue, 'String', num2str(Position(2)));
-%%% Store slip value for detrending later.
-    setappdata(handles.StepSlipValue,'Step_SlipValue',Position(1));
-    setappdata(handles.StepFrictionValue,'Step_SlipValue',Position(2));
-%%% Compute sliding velocities before and after the step, using the
-%%% windowed data.
-    Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
-    Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
-    [~, kk] = min(abs(Slip_ZeroRef - Position(1)));
-    v_i = Slip_ZeroRef(kk)/Time_ZeroRef(kk);
-    v_f = (Slip_ZeroRef(end) - Slip_ZeroRef(kk))...
-        /(Time_ZeroRef(end) - Time_ZeroRef(kk));
-%%% Plot the displacement time series for the windowed data, showing the
-%%% location of the selected step.
-    figure;plot(Time_ZeroRef, Slip_ZeroRef, 'k.', Time_ZeroRef(kk),Position(1),...
-        'ro','MarkerFaceColor','r')
-    xlabel('Time (s)')
-    ylabel('Load Point Displacement (\mum)')        
-%%% Store velocity values and display in the GUI.
-    set(handles.InitialVelocityValue,'String', num2str(v_i));
-    set(handles.FinalVelocityValue,'String', num2str(v_f));
-%%% Find the normal stress at time of step an display.
-    NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
-    NormStress = NormStressZoom(kk);
-    set(handles.LocNormStress, 'String', num2str(NormStress));
+% function SetVelocityStepButton_Callback(hObject, eventdata, handles)
+% % hObject    handle to SetVelocityStepButton (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% %%% Set the data point to be recorded when the left mouse button is
+% %%% clicked.
+%     datacursormode on
+%     waitforbuttonpress
+%     cursorMode = datacursormode(gcf);
+%     dcm_Info = getCursorInfo(cursorMode);
+%     Position = dcm_Info.Position;
+%     datacursormode off
+%     set(handles.StepSlipValue, 'String', num2str(Position(1)));
+%     set(handles.StepFrictionValue, 'String', num2str(Position(2)));
+% %%% Store slip value for detrending later.
+%     setappdata(handles.StepSlipValue,'Step_SlipValue',Position(1));
+%     setappdata(handles.StepFrictionValue,'Step_SlipValue',Position(2));
+% %%% Compute sliding velocities before and after the step, using the
+% %%% windowed data.
+%     Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
+%     Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
+%     [~, kk] = min(abs(Slip_ZeroRef - Position(1)));
+%     v_i = Slip_ZeroRef(kk)/Time_ZeroRef(kk);
+%     v_f = (Slip_ZeroRef(end) - Slip_ZeroRef(kk))...
+%         /(Time_ZeroRef(end) - Time_ZeroRef(kk));
+% %%% Plot the displacement time series for the windowed data, showing the
+% %%% location of the selected step.
+%     figure;plot(Time_ZeroRef, Slip_ZeroRef, 'k.', Time_ZeroRef(kk),Position(1),...
+%         'ro','MarkerFaceColor','r')
+%     xlabel('Time (s)')
+%     ylabel('Load Point Displacement (\mum)')        
+% %%% Store velocity values and display in the GUI.
+%     set(handles.InitialVelocityValue,'String', num2str(v_i));
+%     set(handles.FinalVelocityValue,'String', num2str(v_f));
+% %%% Find the normal stress at time of step an display.
+%     NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
+%     NormStress = NormStressZoom(kk);
+%     set(handles.LocNormStress, 'String', num2str(NormStress));
 
 function StepSlipValue_Callback(hObject, eventdata, handles)
 % hObject    handle to StepSlipValue (see GCBO)
@@ -2185,145 +2021,145 @@ function HoldSlipValue_Callback(hObject, eventdata, handles)
 
 
 % --- Executes during object creation, after setting all properties.
-function HoldSlipValue_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to HoldSlipValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
+% function HoldSlipValue_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to HoldSlipValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
 
 
 % --- Executes on button press in SetHoldButton.
-function SetHoldButton_Callback(hObject, eventdata, handles)
-% hObject    handle to SetHoldButton (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
+% function SetHoldButton_Callback(hObject, eventdata, handles)
+% % hObject    handle to SetHoldButton (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% %%% Plot the detrended friction data against zero referenced time.
+%     Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
+%     Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
+% %%% Set the data point to be recorded when the left mouse button is
+% %%% clicked.
+%     datacursormode on
+%     waitforbuttonpress
+%     cursorMode = datacursormode(gcf);
+%     dcm_Info = getCursorInfo(cursorMode);
+%     Position = dcm_Info.Position;
+%     datacursormode off
+% %%% Find the zero reference slip value corresponding to the selected time.
+%     [~, ii] = min(abs(Time_ZeroRef - Position(1)));
+%     HoldSlip = Slip_ZeroRef(ii);
+% %%% Plot the displacement time series for the windowed data, showing the
+% %%% location of the selected hold
+%     figure;plot(Time_ZeroRef, Slip_ZeroRef, 'k.', Position(1), Slip_ZeroRef(ii),...
+%         'ro','MarkerFaceColor','r')
+%     xlabel('Time (s)')
+%     ylabel('Load Point Displacement (\mum)')      
+% %%% Display the values in the SHS Parameters panel    
+%     set(handles.HoldSlipValue, 'String', num2str(Position(1)));
+%     set(handles.HoldFrictionValue, 'String', num2str(Position(2)));
+% %%% Store values and the plot handle.
+%     setappdata(handles.SetHoldButton,'Step_TimeValue',Position(1));
+%     setappdata(handles.HoldSlipValue,'Step_SlipValue',HoldSlip);
+%     setappdata(handles.HoldFrictionValue,'Step_FrictionValue',Position(2));
+% %%% Find the normal stress at time of step an display.
+%     NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
+%     NormStress = NormStressZoom(ii);
+%     set(handles.LocNormStress, 'String', num2str(NormStress));
 
-%%% Plot the detrended friction data against zero referenced time.
-    Time_ZeroRef = getappdata(handles.DetrendButton,'TimeZeroRef_Data');
-    Slip_ZeroRef = getappdata(handles.DetrendButton,'SlipZeroRef_Data');
-%%% Set the data point to be recorded when the left mouse button is
-%%% clicked.
-    datacursormode on
-    waitforbuttonpress
-    cursorMode = datacursormode(gcf);
-    dcm_Info = getCursorInfo(cursorMode);
-    Position = dcm_Info.Position;
-    datacursormode off
-%%% Find the zero reference slip value corresponding to the selected time.
-    [~, ii] = min(abs(Time_ZeroRef - Position(1)));
-    HoldSlip = Slip_ZeroRef(ii);
-%%% Plot the displacement time series for the windowed data, showing the
-%%% location of the selected hold
-    figure;plot(Time_ZeroRef, Slip_ZeroRef, 'k.', Position(1), Slip_ZeroRef(ii),...
-        'ro','MarkerFaceColor','r')
-    xlabel('Time (s)')
-    ylabel('Load Point Displacement (\mum)')      
-%%% Display the values in the SHS Parameters panel    
-    set(handles.HoldSlipValue, 'String', num2str(Position(1)));
-    set(handles.HoldFrictionValue, 'String', num2str(Position(2)));
-%%% Store values and the plot handle.
-    setappdata(handles.SetHoldButton,'Step_TimeValue',Position(1));
-    setappdata(handles.HoldSlipValue,'Step_SlipValue',HoldSlip);
-    setappdata(handles.HoldFrictionValue,'Step_FrictionValue',Position(2));
-%%% Find the normal stress at time of step an display.
-    NormStressZoom = getappdata(handles.SlopeValue, 'NormStressZoomData');
-    NormStress = NormStressZoom(ii);
-    set(handles.LocNormStress, 'String', num2str(NormStress));
-
-function ReloadVelocityValue_Callback(hObject, eventdata, handles)
-% hObject    handle to ReloadVelocityValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of ReloadVelocityValue as text
-%        str2double(get(hObject,'String')) returns contents of ReloadVelocityValue as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function ReloadVelocityValue_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to ReloadVelocityValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-
-function LoadVelocityValue_Callback(hObject, eventdata, handles)
-% hObject    handle to LoadVelocityValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of LoadVelocityValue as text
-%        str2double(get(hObject,'String')) returns contents of LoadVelocityValue as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function LoadVelocityValue_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to LoadVelocityValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-
-function HoldFrictionValue_Callback(hObject, eventdata, handles)
-% hObject    handle to HoldFrictionValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of HoldFrictionValue as text
-%        str2double(get(hObject,'String')) returns contents of HoldFrictionValue as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function HoldFrictionValue_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to HoldFrictionValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-
-function HoldTime_Callback(hObject, eventdata, handles)
-% hObject    handle to HoldTime (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of HoldTime as text
-%        str2double(get(hObject,'String')) returns contents of HoldTime as a double
+% function ReloadVelocityValue_Callback(hObject, eventdata, handles)
+% % hObject    handle to ReloadVelocityValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of ReloadVelocityValue as text
+% %        str2double(get(hObject,'String')) returns contents of ReloadVelocityValue as a double
+% 
+% 
+% % --- Executes during object creation, after setting all properties.
+% function ReloadVelocityValue_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to ReloadVelocityValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
+% 
+% 
+% 
+% function LoadVelocityValue_Callback(hObject, eventdata, handles)
+% % hObject    handle to LoadVelocityValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of LoadVelocityValue as text
+% %        str2double(get(hObject,'String')) returns contents of LoadVelocityValue as a double
+% 
+% 
+% % --- Executes during object creation, after setting all properties.
+% function LoadVelocityValue_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to LoadVelocityValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
+% 
+% 
+% 
+% function HoldFrictionValue_Callback(hObject, eventdata, handles)
+% % hObject    handle to HoldFrictionValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of HoldFrictionValue as text
+% %        str2double(get(hObject,'String')) returns contents of HoldFrictionValue as a double
+% 
+% 
+% % --- Executes during object creation, after setting all properties.
+% function HoldFrictionValue_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to HoldFrictionValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
 
 
-% --- Executes during object creation, after setting all properties.
-function HoldTime_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to HoldTime (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
 
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
+% function HoldTime_Callback(hObject, eventdata, handles)
+% % hObject    handle to HoldTime (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of HoldTime as text
+% %        str2double(get(hObject,'String')) returns contents of HoldTime as a double
+% 
+% 
+% % --- Executes during object creation, after setting all properties.
+% function HoldTime_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to HoldTime (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
 
 
 % --- Executes on selection change in ListBox.
@@ -2728,7 +2564,7 @@ end
 
 %%% Get the stuff.
 [x_0,x_e,x_L,NormStress,Slip_ZeroRef,Time_ZeroRef,StateVarFlag,...
-    StiffnessFlag,MuFlag,Weight] = GetStuff(handles);
+    StiffnessFlag,MuFlag,Weight,WUC] = GetStuff(handles);
 
 a = x_0(2);
 b1 = x_0(3);
@@ -2742,7 +2578,7 @@ else
 end
 %%% Run a spring-slider simulation using the guessed parameters.
 Period = 2*pi/x_L(3);
-Time_Eval = 6*Period + Time_ZeroRef;
+Time_Eval = WUC*Period + Time_ZeroRef;
 tspan = [0 Time_Eval(end)];
 v_i = x_L(1);
 state1_i = d_c1/v_i;
@@ -2766,82 +2602,32 @@ SlipLawFlag = getappdata(handles.FitButton, 'SlipLawFlag');
 
 if AgingLawFlag == 1
 %%% Aging law test.
-StateLawFlag = true;
-%if EventFlag
-%    ODE_Sol = ode45(@(time,Vars)SpringBlock(time,Vars,x_0,x_e,v_i,v_f,TimeOfStep,...
-%        StateLawFlag,StateVarFlag,EventFlag,StiffnessFlag,MuFlag),...
-%        Time_ZeroRef,Vars_i,opt);
-%%% Compute the load point slip.
-%    Slip_f = nan(numel(Time_ZeroRef), 1);
-%    [~, kk1] = min(abs(Time_ZeroRef - TimeOfStep));
-%    Slip_f(1:kk1) = v_i*Time_ZeroRef(1:kk1);
-%    Slip_f(kk1+1:end) = Slip_f(kk1) + v_f*cumsum(diff(Time_ZeroRef(kk1:end)));
-%else
-%    HoldTime = Holds{1};
-%    TimeOfHold = Holds{2};
+    StateLawFlag = true;
     ODE_Sol = ode15s(@(time,Vars)SpringBlock(time,Vars,x_0,x_e,x_L,StateLawFlag,...
         StateVarFlag,StiffnessFlag,MuFlag), tspan,Vars_i,opt);
-%%% Compute the load point slip.
-%    Slip_f = nan(numel(Time_ZeroRef), 1);
-%    [~, kk1] = min(abs(Time_ZeroRef - TimeOfHold));
-%    [~, kk2] = min(abs(Time_ZeroRef - (TimeOfHold + HoldTime)));
-%    Slip_f(1:kk1) = v_i*Time_ZeroRef(1:kk1);
-%    Slip_f(kk1+1:kk2) = Slip_f(kk1);
-%    Slip_f(kk2+1:end) = Slip_f(kk2) + v_f*cumsum(diff(Time_ZeroRef(kk2:end)));
-%end    
-%    N_T = Time_ZeroRef(end)/Period;
     bestY = deval(ODE_Sol, Time_Eval);
-%    Time_Eval = Time_Eval - Time_Eval(1);
-%bestY = deval(ODE_Sol, Time_ZeroRef);
     Mu_f = bestY(4,:)';
 
 %%% Plot the test over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-
-        PAgingTest = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'r',...
-            'LineWidth', 2, 'LineStyle', '--');
-%    end
+    PAgingTest = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'r',...
+        'LineWidth', 2, 'LineStyle', '--');
     hold(handles.FittingAxes, 'off');
 end
 
 
 if SlipLawFlag == 1
 %%% Slip law test.
-StateLawFlag = false;
-%if EventFlag
-%    ODE_Sol = ode45(@(time,Vars)SpringBlock(time,Vars,x_0,x_e,v_i,v_f,TimeOfStep,...
-%        StateLawFlag,StateVarFlag,EventFlag,StiffnessFlag,MuFlag),...
-%        Time_ZeroRef,Vars_i,opt);
-%%% Compute the load point slip.
-%    Slip_f = nan(numel(Time_ZeroRef), 1);
-%    [~, kk1] = min(abs(Time_ZeroRef - TimeOfStep));
-%    Slip_f(1:kk1) = v_i*Time_ZeroRef(1:kk1);
-%    Slip_f(kk1+1:end) = Slip_f(kk1) + v_f*cumsum(diff(Time_ZeroRef(kk1:end)));    
-%else
-%    HoldTime = Holds{1};
-%    TimeOfHold = Holds{2};
+    StateLawFlag = false;
     ODE_Sol = ode15s(@(time,Vars)SpringBlock(time,Vars,x_0,x_e,x_L,StateLawFlag,...
         StateVarFlag,StiffnessFlag,MuFlag), tspan,Vars_i,opt);
-%%% Compute the load point slip
-%    Slip_f = nan(numel(Time_ZeroRef), 1);
-%    [~, kk1] = min(abs(Time_ZeroRef - TimeOfHold));
-%    [~, kk2] = min(abs(Time_ZeroRef - (TimeOfHold + HoldTime)));
-%    Slip_f(1:kk1) = v_i*Time_ZeroRef(1:kk1);
-%    Slip_f(kk1+1:kk2) = Slip_f(kk1);
-%    Slip_f(kk2+1:end) = Slip_f(kk2) + v_f*cumsum(diff(Time_ZeroRef(kk2:end)));
-%end    
-bestY = deval(ODE_Sol, Time_Eval);
-Mu_f = bestY(4,:)';
+    bestY = deval(ODE_Sol, Time_Eval);
+    Mu_f = bestY(4,:)';
 
 %%% Plot the test over the detrended data in the fitting axes. 
     hold(handles.FittingAxes, 'on');
-%    if EventFlag
-%        PSlipTest = plot(handles.FittingAxes,Slip_f, Mu_f, 'c',...
-%            'LineWidth', 2, 'LineStyle', '--');
-%    else
-        PSlipTest = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'c',...
-            'LineWidth', 2, 'LineStyle', '--');
-%    end
+    PSlipTest = plot(handles.FittingAxes,Time_ZeroRef, Mu_f, 'c',...
+        'LineWidth', 2, 'LineStyle', '--');
     hold(handles.FittingAxes, 'off');
 end
 
@@ -2862,26 +2648,26 @@ elseif AgingLawFlag == 0 && SlipLawFlag == 1
     setappdata(handles.TestButton, 'Plot_STest', PSlipTest);
 end
 
-function Guess_alphaValue_Callback(hObject, eventdata, handles)
-% hObject    handle to Guess_alphaValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of Guess_alphaValue as text
-%        str2double(get(hObject,'String')) returns contents of Guess_alphaValue as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function Guess_alphaValue_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to Guess_alphaValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
+% function Guess_alphaValue_Callback(hObject, eventdata, handles)
+% % hObject    handle to Guess_alphaValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of Guess_alphaValue as text
+% %        str2double(get(hObject,'String')) returns contents of Guess_alphaValue as a double
+% 
+% 
+% % --- Executes during object creation, after setting all properties.
+% function Guess_alphaValue_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to Guess_alphaValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
 
 
 
@@ -2895,39 +2681,39 @@ function AgingFit_alphaValue_Callback(hObject, eventdata, handles)
 
 
 % --- Executes during object creation, after setting all properties.
-function AgingFit_alphaValue_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to AgingFit_alphaValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
-
-
-
-function SlipFit_alphaValue_Callback(hObject, eventdata, handles)
-% hObject    handle to SlipFit_alphaValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    structure with handles and user data (see GUIDATA)
-
-% Hints: get(hObject,'String') returns contents of SlipFit_alphaValue as text
-%        str2double(get(hObject,'String')) returns contents of SlipFit_alphaValue as a double
-
-
-% --- Executes during object creation, after setting all properties.
-function SlipFit_alphaValue_CreateFcn(hObject, eventdata, handles)
-% hObject    handle to SlipFit_alphaValue (see GCBO)
-% eventdata  reserved - to be defined in a future version of MATLAB
-% handles    empty - handles not created until after all CreateFcns called
-
-% Hint: edit controls usually have a white background on Windows.
-%       See ISPC and COMPUTER.
-if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
-    set(hObject,'BackgroundColor','white');
-end
+% function AgingFit_alphaValue_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to AgingFit_alphaValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
+% 
+% 
+% 
+% function SlipFit_alphaValue_Callback(hObject, eventdata, handles)
+% % hObject    handle to SlipFit_alphaValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    structure with handles and user data (see GUIDATA)
+% 
+% % Hints: get(hObject,'String') returns contents of SlipFit_alphaValue as text
+% %        str2double(get(hObject,'String')) returns contents of SlipFit_alphaValue as a double
+% 
+% 
+% % --- Executes during object creation, after setting all properties.
+% function SlipFit_alphaValue_CreateFcn(hObject, eventdata, handles)
+% % hObject    handle to SlipFit_alphaValue (see GCBO)
+% % eventdata  reserved - to be defined in a future version of MATLAB
+% % handles    empty - handles not created until after all CreateFcns called
+% 
+% % Hint: edit controls usually have a white background on Windows.
+% %       See ISPC and COMPUTER.
+% if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+%     set(hObject,'BackgroundColor','white');
+% end
 
 
 
@@ -3301,7 +3087,6 @@ function ClearTestLines_Callback(hObject, eventdata, handles)
 
 %%% See if there's any test lines plotted and delete them.
 children = get(handles.FittingAxes, 'children');
-%EventFlag = getappdata(handles.FitButton, 'EventFlag');
 if numel(children) > 1
     for i = 1:numel(children)
 %%% Check if fit lines are present.
@@ -3746,6 +3531,29 @@ function SignalPhase_Callback(hObject, eventdata, handles)
 % --- Executes during object creation, after setting all properties.
 function SignalPhase_CreateFcn(hObject, eventdata, handles)
 % hObject    handle to SignalPhase (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    empty - handles not created until after all CreateFcns called
+
+% Hint: edit controls usually have a white background on Windows.
+%       See ISPC and COMPUTER.
+if ispc && isequal(get(hObject,'BackgroundColor'), get(0,'defaultUicontrolBackgroundColor'))
+    set(hObject,'BackgroundColor','white');
+end
+
+
+
+function WarmUpCycles_Callback(hObject, eventdata, handles)
+% hObject    handle to WarmUpCycles (see GCBO)
+% eventdata  reserved - to be defined in a future version of MATLAB
+% handles    structure with handles and user data (see GUIDATA)
+
+% Hints: get(hObject,'String') returns contents of WarmUpCycles as text
+%        str2double(get(hObject,'String')) returns contents of WarmUpCycles as a double
+
+
+% --- Executes during object creation, after setting all properties.
+function WarmUpCycles_CreateFcn(hObject, eventdata, handles)
+% hObject    handle to WarmUpCycles (see GCBO)
 % eventdata  reserved - to be defined in a future version of MATLAB
 % handles    empty - handles not created until after all CreateFcns called
 
