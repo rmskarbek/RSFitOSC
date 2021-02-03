@@ -320,11 +320,17 @@ function FitButton_Callback(hObject, eventdata, handles)
 
 %%% Aging law fit.
 if AgingLawFlag == 1
+    try
     StateLawFlag = true;
     [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagA,~,residualA,jacobian,resnorm]...
         = RASFittingLD1(x_0,x_e,x_L,NormStress,Friction_Detrend,Slip_ZeroRef,...
         Time_ZeroRef,StateLawFlag,StateVarFlag,StiffnessFlag,MuFlag,...
         Weight,WUC,SampleSlipFlag,handles);
+    catch ME
+        disp(ME.message)
+        msg = 'ODE solver failure';
+        error(msg);
+    end
     
 %%% Compute the R-squared value.   
     FrictionResidualA = sum((Mu_f - Friction_Detrend).^2);
@@ -490,16 +496,17 @@ end
 %%%------------------------ Start Slip Law -----------------------------%%%
 if SlipLawFlag == 1
 %%% Slip law fit.
+    try
     StateLawFlag = false;
     [~,x_f,~,~,~,Mu_f,Slip_f,SampleSlip_f,exitflagS,~,residualS,jacobian,resnorm]...
         = RASFittingLD1(x_0,x_e,x_L,NormStress,Friction_Detrend,Slip_ZeroRef,...
         Time_ZeroRef,StateLawFlag,StateVarFlag,StiffnessFlag,MuFlag,...
         Weight,WUC,SampleSlipFlag,handles);
-        %catch ME
-        %    disp(ME.message)
-        %    msg = 'ODE solver failure';
-        %    error(msg);
-        %end
+    catch ME
+        disp(ME.message)
+        msg = 'ODE solver failure';
+        error(msg);
+    end
 %    end
 
 %%% Compute, display, and store R-squared values.  
